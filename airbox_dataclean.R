@@ -1,3 +1,4 @@
+
 library(geosphere)
 library(raster)
 library(sp)
@@ -11,107 +12,119 @@ library(foreach)
 #cl <- makePSOCKcluster(detectCores() - 1)
 registerDoParallel(7)
 
-setwd("/Users/sherry/Desktop/taiwan_airpollution/airbox")
+setwd("/Users/sherry/Desktop/taiwan_airpollution/airbox")#设置当前工作目录
 
 copytable <- function(table){
-  clip <- pipe("pbcopy", "w")
-  write.table(table, sep = "，", file = clip)
-  close(clip)
+    clip <- pipe("pbcopy", "w")
+    write.table(table, sep = "，", file = clip)
+    close(clip)
 }
 
 avg_diff <- function(list){
-  list <- sort(list, decreasing = FALSE)
-  avg <- mean(diff(list,1))
-  return(avg)
+    list <- sort(list, decreasing = FALSE)//Sort from small to big
+    avg <- mean(diff(list,1))
+    return(avg)
 }
 
 unique_length <- function(list){
-  return(length(unique(list)))
+    return(length(unique(list)))//Return length of unique version of list
 }
 
 #Parallel computing for sptial anomaly detection
 spatial_dectect <- function(a, df, time_panel){
-  temp <- df[df$time_panel == time_panel[a], ]
-  temp_station <- temp[c("lon", "lat")]
-  temp_distance <- distm(temp_station, fun = distHaversine)/1000
-  temp_distance <- temp_distance >0 & temp_distance <= 3
-  neighbor_num <- apply(temp_distance, 2, sum)
-  temp_pm <- temp$PM2.5
-  #operation goes by column
-  temp_neighbor <- apply(temp_pm * temp_distance, 2, sum)/neighbor_num
-  return(test <- temp_pm - temp_neighbor)
-}  
+    #Choose all the data from time_panel originate from dataframe which present in parameter time_panel (a bit confused).
+    temp <- df[df$time_panel == time_panel[a], ]
+    #Choose longitude and latitude from the data frame
+    temp_station <- temp[c("lon", "lat")]
+    #Calculate the distance between temp_station using disHaversine function which could calculate the distance on sphere.
+    temp_distance <- distm(temp_station, fun = distHaversine)/1000
+    #Return a matrix contain true or false with the same dimension of the original matrix with regard to the condition given.
+    temp_distance <- temp_distance >0 & temp_distance <= 3
+    #Apply method is some what similar to for but with higher performance.
+    neighbor_num <- apply(temp_distance, 2, sum)
+    temp_pm <- temp$PM2.5
+    #operation goes by column
+    temp_neighbor <- apply(temp_pm * temp_distance, 2, sum)/neighbor_num
+    return(test <- temp_pm - temp_neighbor)
+}
 
 exclude <- c()
 airbox_head <- c("Date", "Time", "device_id", "PM2.5", "PM10", "PM1", "Temperature", "Humidity", "lat", "lon")
 taiwan <- readOGR("/Users/sherry/Desktop/taiwan_airpollution/gadm36_TWN_shp/gadm36_TWN_0.shp")
 airbox_processed <- data.frame(Date <- c(), Time <- c(),
-                               device_id <- c(), PM2.5 <- c(),
-                               PM10 <- c(), PM1 <- c(),
-                               Temperature <- c(), Humidity <- c(),
-                               lat <- c(), lon <- c(),
-                               onland <- c())
+device_id <- c(), PM2.5 <- c(),
+PM10 <- c(), PM1 <- c(),
+Temperature <- c(), Humidity <- c(),
+lat <- c(), lon <- c(),
+onland <- c())
 
 #loop through the 29,915,720 records using foreach package, orginal loop will be a function
 a = 0
 
 for (a in 0:29){
-  #stime <- Sys.time()
-  airbox_raw <- read.csv("AirBox_v2.csv", stringsAsFactors = FALSE, header = FALSE, skip = a*1000000+2, nrow = 1000000)
-  names(airbox_raw) <- airbox_head
-  airbox_raw <- airbox_raw[airbox_raw$lat >= -90 & airbox_raw$lat <= 90 & airbox_raw$lon <= 180 & airbox_raw$lon >= -180, ]
-  loc <- airbox_raw[c("device_id", "lat", "lon")]
-  coordinates(loc) <- ~lon+lat
-  proj4string(loc) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
-  loc <- loc %over% taiwan
-  airbox_raw$onland <- loc$NAME_0 == "Taiwan"
-  before <- nrow(airbox_raw)
-  airbox_raw <- airbox_raw[!is.na(airbox_raw$onland), ]
-  #world <- map("world")
-  #point(airbox_raw$lat, airbox_raw$lon, col = "red", cex = 16)
-  #airbox_raw <- airbox_raw[airbox_raw$Temperature >= 0, ]
-  #airbox_raw <- airbox_raw[airbox_raw$Humidity <= 100,]
-  after <- before - nrow(airbox_raw)
-  exclude <- c(exclude, after)
-  airbox_processed <- rbind(airbox_processed, airbox_raw)
-  rm(airbox_raw)
-  rm(loc)
-  a = a+1
-  #Sys.time() - stime
+    #stime <- Sys.time()
+    airbox_raw <- read.csv("AirBox_v2.csv", stringsAsFactors = FALSE, header = FALSE, skip = a*1000000+2, nrow = 1000000)
+    names(airbox_raw) <- airbox_head
+    airbox_raw <- airbox_raw[airbox_raw$lat >= -90 & airbox_raw$lat <= 90 & airbox_raw$lon <= 180 & airbox_raw$lon >= -180, ]
+    loc <- airbox_raw[c("device_id", "lat", "lon")]
+    coordinates(loc) <- ~lon+lat
+    #CRS 是座標系統，wgs84 是一種形式的座標系統
+    proj4string(loc) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+    # Detected whether it is on land or not.
+    loc <- loc %over% taiwan
+    airbox_raw$onland <- loc$NAME_0 == "Taiwan"
+    before <- nrow(airbox_raw)
+    airbox_raw <- airbox_raw[!is.na(airbox_raw$onland), ]
+    #world <- map("world")
+    #point(airbox_raw$lat, airbox_raw$lon, col = "red", cex = 16)
+    #airbox_raw <- airbox_raw[airbox_raw$Temperature >= 0, ]
+    #airbox_raw <- airbox_raw[airbox_raw$Humidity <= 100,]
+    after <- before - nrow(airbox_raw)
+    #exclude is used to collect the excluded elements
+    exclude <- c(exclude, after)
+    #rbind 會把兩個矩陣合起來用增加的形式
+    airbox_processed <- rbind(airbox_processed, airbox_raw)
+    rm(airbox_raw)
+    rm(loc)
+    a = a+1
+    #Sys.time() - stime
 }
 
 date <- unique(airbox_processed$Date)
 date <- as.Date(date)
 airbox_processed <- airbox_processed[-11]
 
-#remove taiwan shapefile and use ggmap
+#remove taiwan shapefile and use google map 來畫圖
 map <- get_map(location = "taiwan", zoom = 7, maptype = "terrain")
 
 #check less than 0 degree points
 temp <- airbox_processed[airbox_processed$Temperature <= 0, ]
 summary(temp)
-ggmap(map) + 
-  geom_point(
-    aes(x = lon, y = lat), color = "black",
-    data = temp, alpha = 0.5, na.rm = TRUE
-  )
+ggmap(map) +
+geom_point(
+aes(x = lon, y = lat), color = "black",
+data = temp, alpha = 0.5, na.rm = TRUE
+)
 subset <- airbox_processed[airbox_processed$device_id == unique(temp$device_id)[1], ]
 summary(subset[subset$Temperature <= 0, ])
 summary(subset[subset$Temperature >  0, ])
+
 #indicates that less than 0 degree doesn't make sense
 airbox_processed <- airbox_processed[airbox_processed$Temperature >0, ]
 
 #check more than abnormal humidity
+#畫一個有十個直條的直方圖來呈現
 p1 <- hist(airbox_processed$Humidity[airbox_processed$Humidity <= 0], breaks = 10)
 sum(p1$counts)
 p1$counts <- p1$density
 plot(p1, main = "Humidity density graph", xlab = "Humidity", col = rgb(1, 0, 1, 1/4))
-
 p1 <- hist(airbox_processed$Humidity[airbox_processed$Humidity > 100], breaks = 10)
 sum(p1$counts)
 p1$counts <- p1$density
 plot(p1, main = "Humidity density graph", xlab = "Humidity", col = rgb(1, 0, 1, 1/4))
+
 subset_temp <- airbox_processed[airbox_processed$Humidity <= -10 | airbox_processed$Humidity >= 200, ]
+#去掉那些奇怪的濕度
 airbox_processed <- airbox_processed[airbox_processed$Humidity > -10 & airbox_processed$Humidity < 200, ]
 
 #Spatial and Temporal Anomaly dection
@@ -125,11 +138,11 @@ temp[lengths(temp$x) ==max(lengths(temp$x)), ]
 #find spastial anomaly radius range.
 station <- airbox_processed[c("device_id","lat", "lon")]
 station <- station[!duplicated(paste(station$lat, station$lon)), ]
-ggmap(map) + 
-  geom_point(
-    aes(x = lon, y = lat), color = "black",
-    data = station, size = 0.2, na.rm = TRUE
-  )
+ggmap(map) +
+geom_point(
+aes(x = lon, y = lat), color = "black",
+data = station, size = 0.2, na.rm = TRUE
+)
 
 #sstime <- Sys.time()
 #find the distance for every two stations
@@ -147,10 +160,10 @@ radius <- round(p2[which(diff(p2[, 2], 1) <= 0)[1], 1])
 #find the neighbor distance
 near_test <- seq(1, 23, by = 0.5)
 distance_test <-sapply(near_test, function(k) {sum(apply(station_distance <= k, 2, sum) <3)/nrow(station_distance)})
-plot(near_test, distance_test, type = "b", pch = 19, frame = FALSE, 
-     main = "Find Neighbor Distance",
-     xlab = "Distance between two points",
-     ylab = "Percentage of No Neighbor")
+plot(near_test, distance_test, type = "b", pch = 19, frame = FALSE,
+main = "Find Neighbor Distance",
+xlab = "Distance between two points",
+ylab = "Percentage of No Neighbor")
 
 #neighbor distance is set to 3km
 near <- 3
@@ -174,14 +187,14 @@ interval <- 450
 #determine a good abnormal pm2.5 diff threshold
 a = 1
 pm_check <- data.frame(Var1 <- c(),
-                       var2 <- c(),
-                       Freq <- c())
+var2 <- c(),
+Freq <- c())
 for (a in 1:length(device_id)){
-  temp <- airbox_processed[airbox_processed$device_id == device_id[a], ]
-  temp$time_diff <- diff(c(0, temp$unix_time), 1)
-  temp <- temp[temp$time_diff <= interval, ]
-  temp$pm_diff <- diff(c(0, temp$PM2.5), 1)
-  pm_check <- rbind(pm_check, data.frame(t(table(abs(temp$pm_diff)))))
+    temp <- airbox_processed[airbox_processed$device_id == device_id[a], ]
+    temp$time_diff <- diff(c(0, temp$unix_time), 1)
+    temp <- temp[temp$time_diff <= interval, ]
+    temp$pm_diff <- diff(c(0, temp$PM2.5), 1)
+    pm_check <- rbind(pm_check, data.frame(t(table(abs(temp$pm_diff)))))
 }
 pm_check <- pm_check[-1]
 pm_check <- aggregate(pm_check$Freq, by = list(pm_check$Var2), sum)
@@ -194,16 +207,16 @@ temporal_anomaly <- c()
 
 a = 1
 for (a in 1:length(device_id)){
-  temp <- airbox_processed[airbox_processed$device_id == device_id[a], ]
-  temp$time_diff <- diff(c(0, temp$unix_time), 1)
-  temp$pm25_diff <- diff(c(0, temp$PM2.5), 1)
-  temp$lowtime_diff <- temp$time_diff <= interval
-  temp$lowpm_diff <- abs(temp$pm25_diff) <=2
-  temp$temperal_anomaly[temp$lowtime_diff == FALSE] <- NA
-  temp$temperal_anomaly[temp$lowtime_diff == TRUE & temp$pm25_diff == FALSE] <- TRUE
-  temp$temperal_anomaly[temp$lowtime_diff == TRUE & temp$pm25_diff == TRUE] <- FALSE
-  temporal_anomaly <- c(temporal_anomaly, temp$temperal_anomaly)
-  na_stat <- c(na_stat, round(sum(temp$lowtime_diff)/length(temp$lowtime_diff), 2))
+    temp <- airbox_processed[airbox_processed$device_id == device_id[a], ]
+    temp$time_diff <- diff(c(0, temp$unix_time), 1)
+    temp$pm25_diff <- diff(c(0, temp$PM2.5), 1)
+    temp$lowtime_diff <- temp$time_diff <= interval
+    temp$lowpm_diff <- abs(temp$pm25_diff) <=2
+    temp$temperal_anomaly[temp$lowtime_diff == FALSE] <- NA
+    temp$temperal_anomaly[temp$lowtime_diff == TRUE & temp$pm25_diff == FALSE] <- TRUE
+    temp$temperal_anomaly[temp$lowtime_diff == TRUE & temp$pm25_diff == TRUE] <- FALSE
+    temporal_anomaly <- c(temporal_anomaly, temp$temperal_anomaly)
+    na_stat <- c(na_stat, round(sum(temp$lowtime_diff)/length(temp$lowtime_diff), 2))
 }
 airbox_processed$temporal_anomaly <- temporal_anomaly
 count <- table(airbox_processed$temporal_anomaly, useNA = "always")/length(airbox_processed$temporal_anomaly)
