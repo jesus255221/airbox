@@ -92,9 +92,9 @@ for (a in 0:29){
 
 date <- unique(airbox_processed$Date)
 date <- as.Date(date)
-airbox_processed <- airbox_processed[-11]
+airbox_processed <- airbox_processed[-11]//為什麼不要第十一筆資料???
 
-#remove taiwan shapefile and use google map 來畫圖
+#畫地圖
 map <- get_map(location = "taiwan", zoom = 7, maptype = "terrain")
 
 #check less than 0 degree points
@@ -113,7 +113,7 @@ summary(subset[subset$Temperature >  0, ])
 airbox_processed <- airbox_processed[airbox_processed$Temperature >0, ]
 
 #check more than abnormal humidity
-#畫一個有十個直條的直方圖來呈現
+#畫一個有十個直條的直方圖來呈現奇怪濕度
 p1 <- hist(airbox_processed$Humidity[airbox_processed$Humidity <= 0], breaks = 10)
 sum(p1$counts)
 p1$counts <- p1$density
@@ -133,9 +133,11 @@ airbox_processed <- airbox_processed[airbox_processed$Humidity > -10 & airbox_pr
 temp <- aggregate(airbox_processed$lat, by = list(airbox_processed$device_id), unique)
 temp[order(lengths(temp$x), decreasing = TRUE), ]
 sum(lengths(temp$x) >1)
+#只選取那些只出現一次的資料
 temp[lengths(temp$x) ==max(lengths(temp$x)), ]
 
 #find spastial anomaly radius range.
+#把點畫在地圖上
 station <- airbox_processed[c("device_id","lat", "lon")]
 station <- station[!duplicated(paste(station$lat, station$lon)), ]
 ggmap(map) +
@@ -148,6 +150,7 @@ data = station, size = 0.2, na.rm = TRUE
 #find the distance for every two stations
 station_distance <- data.frame(distm(station[c("lon","lat")], fun = distHaversine)/1000)
 #Sys.time() - sstime #Time difference of 7.971666 secs
+#distm 是計算兩個點的距離的函數
 p1 <- hist(station_distance[station_distance < 350], breaks = 20)
 p1$counts <- p1$density
 p2 <- density(station_distance[station_distance < 350], bw = 15)
@@ -156,9 +159,11 @@ lines(p2, col = rgb(1, 0, 1, 1))
 #use the first peak
 p2 <- cbind(p2$x, p2$y)
 #find the distance that bears the first negative diff
+#差分有點像等差數列是後數減前數
 radius <- round(p2[which(diff(p2[, 2], 1) <= 0)[1], 1])
 #find the neighbor distance
 near_test <- seq(1, 23, by = 0.5)
+#apply函數家族是用來代替for迴圈有更高的執行效率
 distance_test <-sapply(near_test, function(k) {sum(apply(station_distance <= k, 2, sum) <3)/nrow(station_distance)})
 plot(near_test, distance_test, type = "b", pch = 19, frame = FALSE,
 main = "Find Neighbor Distance",
@@ -169,6 +174,7 @@ ylab = "Percentage of No Neighbor")
 near <- 3
 
 #temperal data processing
+#posixct是時間格式
 airbox_processed$unix_time <- paste(airbox_processed$Date, airbox_processed$Time, "GMT")
 airbox_processed$unix_time <- as.numeric(as.POSIXct(airbox_processed$unix_time))
 
