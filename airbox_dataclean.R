@@ -174,7 +174,7 @@ ylab = "Percentage of No Neighbor")
 near <- 3
 
 #temperal data processing
-#posixct是時間格式
+#posixct是可以操作POSIX規範的time形式
 airbox_processed$unix_time <- paste(airbox_processed$Date, airbox_processed$Time, "GMT")
 airbox_processed$unix_time <- as.numeric(as.POSIXct(airbox_processed$unix_time))
 
@@ -195,11 +195,14 @@ a = 1
 pm_check <- data.frame(Var1 <- c(),
 var2 <- c(),
 Freq <- c())
+#偵測所有airbox
 for (a in 1:length(device_id)){
     temp <- airbox_processed[airbox_processed$device_id == device_id[a], ]
     temp$time_diff <- diff(c(0, temp$unix_time), 1)
+    #計算各資料點的時間差
     temp <- temp[temp$time_diff <= interval, ]
     temp$pm_diff <- diff(c(0, temp$PM2.5), 1)
+    #計算各資料點的PM25差
     pm_check <- rbind(pm_check, data.frame(t(table(abs(temp$pm_diff)))))
 }
 pm_check <- pm_check[-1]
@@ -217,9 +220,11 @@ for (a in 1:length(device_id)){
     temp$time_diff <- diff(c(0, temp$unix_time), 1)
     temp$pm25_diff <- diff(c(0, temp$PM2.5), 1)
     temp$lowtime_diff <- temp$time_diff <= interval
-    temp$lowpm_diff <- abs(temp$pm25_diff) <=2
+    temp$lowpm_diff <- abs(temp$pm25_diff) <= 2
     temp$temperal_anomaly[temp$lowtime_diff == FALSE] <- NA
+    #這邊是不是寫錯了後面的temp$pm25_diff應該為temp$lowpm_diff
     temp$temperal_anomaly[temp$lowtime_diff == TRUE & temp$pm25_diff == FALSE] <- TRUE
+    #檢查相對時間差內PM25有沒有劇烈的變化
     temp$temperal_anomaly[temp$lowtime_diff == TRUE & temp$pm25_diff == TRUE] <- FALSE
     temporal_anomaly <- c(temporal_anomaly, temp$temperal_anomaly)
     na_stat <- c(na_stat, round(sum(temp$lowtime_diff)/length(temp$lowtime_diff), 2))
@@ -242,6 +247,7 @@ timeslice_length <- aggregate(airbox_processed$device_id, by = list(airbox_proce
 time_panel <- unique(airbox_processed$time_panel)
 airbox_processed <- airbox_processed[order(airbox_processed$time_panel), ]
 #stime <- Sys.time()
+#和鄰居差太多的會回傳
 spatial_anomaly <- foreach(a = 1:length(time_panel), .combine = c, .packages = c("geosphere", "sp")) %dopar% spatial_dectect(a, airbox_processed, time_panel)
 #Sys.time() - stime
 #summary(spatial_anomaly)
