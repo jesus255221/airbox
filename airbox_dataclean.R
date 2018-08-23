@@ -68,9 +68,9 @@ for (a in 0:29){
     airbox_raw <- airbox_raw[airbox_raw$lat >= -90 & airbox_raw$lat <= 90 & airbox_raw$lon <= 180 & airbox_raw$lon >= -180, ]
     loc <- airbox_raw[c("device_id", "lat", "lon")]
     coordinates(loc) <- ~lon+lat
-    #CRS 是座標系統，wgs84 是一種形式的座標系統
+    #wgs84 是一種形式的座標系統
     proj4string(loc) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
-    # Detected whether it is on land or not.
+    #偵測是否在台灣本島上面
     loc <- loc %over% taiwan
     airbox_raw$onland <- loc$NAME_0 == "Taiwan"
     before <- nrow(airbox_raw)
@@ -82,7 +82,7 @@ for (a in 0:29){
     after <- before - nrow(airbox_raw)
     #exclude is used to collect the excluded elements
     exclude <- c(exclude, after)
-    #rbind 會把兩個矩陣合起來用增加的形式
+    #rbind 會把兩個矩陣整合
     airbox_processed <- rbind(airbox_processed, airbox_raw)
     rm(airbox_raw)
     rm(loc)
@@ -92,7 +92,7 @@ for (a in 0:29){
 
 date <- unique(airbox_processed$Date)
 date <- as.Date(date)
-airbox_processed <- airbox_processed[-11]//為什麼不要第十一筆資料???
+airbox_processed <- airbox_processed[-11]#為什麼不要第十一筆資料???
 
 #畫地圖
 map <- get_map(location = "taiwan", zoom = 7, maptype = "terrain")
@@ -124,7 +124,7 @@ p1$counts <- p1$density
 plot(p1, main = "Humidity density graph", xlab = "Humidity", col = rgb(1, 0, 1, 1/4))
 
 subset_temp <- airbox_processed[airbox_processed$Humidity <= -10 | airbox_processed$Humidity >= 200, ]
-#去掉那些奇怪的濕度
+#去掉那些介於-10到200的奇怪濕度
 airbox_processed <- airbox_processed[airbox_processed$Humidity > -10 & airbox_processed$Humidity < 200, ]
 
 #Spatial and Temporal Anomaly dection
